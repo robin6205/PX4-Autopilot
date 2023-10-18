@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<sdf version='1.9'>
+  <model name='x500-Lidar'>
+    <include merge='true'>
+      <uri>x500</uri>
+    </include>
+      <plugin
+        filename="gz-sim-sensors-system"
+        name="gz::sim::systems::Sensors">
+	<render_engine>ogre2</render_engine>
+      </plugin>
+      
+      <sensor name='gpu_lidar' type='gpu_lidar'>
+        <pose relative_to='base_link'>0 0 0 0 0 0</pose>
+        <topic>lidar</topic>
+	<update_rate>10</update_rate>
+      </sensor>
+  </model>
+</sdf>
