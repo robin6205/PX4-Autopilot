@@ -128,7 +128,10 @@ void Ekf::controlFusionModes(const imuSample &imu_delayed)
 #endif // CONFIG_EKF2_DRAG_FUSION
 
 	controlHeightFusion(imu_delayed);
+
+#if defined(CONFIG_EKF2_GRAVITY_FUSION)
 	controlGravityFusion(imu_delayed);
+#endif // CONFIG_EKF2_GRAVITY_FUSION
 
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 	// Additional data odometry data from an external estimator can be fused.
@@ -142,8 +145,11 @@ void Ekf::controlFusionModes(const imuSample &imu_delayed)
 
 	controlZeroInnovationHeadingUpdate();
 
-	controlZeroVelocityUpdate();
-	controlZeroGyroUpdate(imu_delayed);
+	_zero_velocity_update.update(*this, imu_delayed);
+
+	if (_params.imu_ctrl & static_cast<int32_t>(ImuCtrl::GyroBias)) {
+		_zero_gyro_update.update(*this, imu_delayed);
+	}
 
 	// Fake position measurement for constraining drift when no other velocity or position measurements
 	controlFakePosFusion();
