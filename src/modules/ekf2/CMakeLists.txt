@@ -124,15 +124,15 @@ list(APPEND EKF_SRCS
 	EKF/estimator_interface.cpp
 	EKF/fake_height_control.cpp
 	EKF/fake_pos_control.cpp
-	EKF/gravity_fusion.cpp
 	EKF/height_control.cpp
 	EKF/imu_down_sampler.cpp
 	EKF/output_predictor.cpp
 	EKF/vel_pos_fusion.cpp
 	EKF/yaw_fusion.cpp
 	EKF/zero_innovation_heading_update.cpp
-	EKF/zero_gyro_update.cpp
-	EKF/zero_velocity_update.cpp
+
+	EKF/aid_sources/ZeroGyroUpdate.cpp
+	EKF/aid_sources/ZeroVelocityUpdate.cpp
 )
 
 if(CONFIG_EKF2_AIRSPEED)
@@ -173,6 +173,10 @@ endif()
 
 if(CONFIG_EKF2_GNSS_YAW)
 	list(APPEND EKF_SRCS EKF/gps_yaw_fusion.cpp)
+endif()
+
+if(CONFIG_EKF2_GRAVITY_FUSION)
+	list(APPEND EKF_SRCS EKF/gravity_fusion.cpp)
 endif()
 
 if(CONFIG_EKF2_MAGNETOMETER)
@@ -217,6 +221,7 @@ px4_add_module(
 		#-O0
 	INCLUDES
 		EKF
+		EKF/aid_sources
 		${EKF_GENERATED_DERIVATION_INCLUDE_PATH}
 	PRIORITY
 		"SCHED_PRIORITY_MAX - 18" # max priority below high priority WQ threads

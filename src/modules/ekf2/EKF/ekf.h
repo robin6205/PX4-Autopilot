@@ -45,7 +45,10 @@
 
 #include "estimator_interface.h"
 
-#include "EKFGSF_yaw.h"
+#if defined(CONFIG_EKF2_GNSS)
+# include "EKFGSF_yaw.h"
+#endif // CONFIG_EKF2_GNSS
+
 #include "bias_estimator.hpp"
 #include "height_bias_estimator.hpp"
 #include "position_bias_estimator.hpp"
@@ -55,6 +58,9 @@
 #include <uORB/topics/estimator_aid_source1d.h>
 #include <uORB/topics/estimator_aid_source2d.h>
 #include <uORB/topics/estimator_aid_source3d.h>
+
+#include "aid_sources/ZeroGyroUpdate.hpp"
+#include "aid_sources/ZeroVelocityUpdate.hpp"
 
 enum class Likelihood { LOW, MEDIUM, HIGH };
 
@@ -80,19 +86,11 @@ public:
 
 	static uint8_t getNumberOfStates() { return State::size; }
 
-#if defined(CONFIG_EKF2_EXTERNAL_VISION)
-	void getEvVelPosInnov(float hvel[2], float &vvel, float hpos[2], float &vpos) const;
-	void getEvVelPosInnovVar(float hvel[2], float &vvel, float hpos[2], float &vpos) const;
-	void getEvVelPosInnovRatio(float &hvel, float &vvel, float &hpos, float &vpos) const;
-#endif // CONFIG_EKF2_EXTERNAL_VISION
+	const StateSample &state() const { return _state; }
 
 #if defined(CONFIG_EKF2_BAROMETER)
 	const auto &aid_src_baro_hgt() const { return _aid_src_baro_hgt; }
 	const BiasEstimator::status &getBaroBiasEstimatorStatus() const { return _baro_b_est.getStatus(); }
-
-	void getBaroHgtInnov(float &baro_hgt_innov) const { baro_hgt_innov = _aid_src_baro_hgt.innovation; }
-	void getBaroHgtInnovVar(float &baro_hgt_innov_var) const { baro_hgt_innov_var = _aid_src_baro_hgt.innovation_variance; }
-	void getBaroHgtInnovRatio(float &baro_hgt_innov_ratio) const { baro_hgt_innov_ratio = _aid_src_baro_hgt.test_ratio; }
 #endif // CONFIG_EKF2_BAROMETER
 
 #if defined(CONFIG_EKF2_TERRAIN)
@@ -112,28 +110,10 @@ public:
 
 # if defined(CONFIG_EKF2_RANGE_FINDER)
 	const auto &aid_src_terrain_range_finder() const { return _aid_src_terrain_range_finder; }
-
-	void getHaglInnov(float &hagl_innov) const { hagl_innov = _aid_src_terrain_range_finder.innovation; }
-	void getHaglInnovVar(float &hagl_innov_var) const { hagl_innov_var = _aid_src_terrain_range_finder.innovation_variance; }
-	void getHaglInnovRatio(float &hagl_innov_ratio) const { hagl_innov_ratio = _aid_src_terrain_range_finder.test_ratio; }
 # endif // CONFIG_EKF2_RANGE_FINDER
 
 # if defined(CONFIG_EKF2_OPTICAL_FLOW)
 	const auto &aid_src_terrain_optical_flow() const { return _aid_src_terrain_optical_flow; }
-
-	void getTerrainFlowInnov(float flow_innov[2]) const
-	{
-		flow_innov[0] = _aid_src_terrain_optical_flow.innovation[0];
-		flow_innov[1] = _aid_src_terrain_optical_flow.innovation[1];
-	}
-
-	void getTerrainFlowInnovVar(float flow_innov_var[2]) const
-	{
-		flow_innov_var[0] = _aid_src_terrain_optical_flow.innovation_variance[0];
-		flow_innov_var[1] = _aid_src_terrain_optical_flow.innovation_variance[1];
-	}
-
-	void getTerrainFlowInnovRatio(float &flow_innov_ratio) const { flow_innov_ratio = math::max(_aid_src_terrain_optical_flow.test_ratio[0], _aid_src_terrain_optical_flow.test_ratio[1]); }
 # endif // CONFIG_EKF2_OPTICAL_FLOW
 
 #endif // CONFIG_EKF2_TERRAIN
@@ -143,31 +123,13 @@ public:
 	const BiasEstimator::status &getRngHgtBiasEstimatorStatus() const { return _rng_hgt_b_est.getStatus(); }
 	const auto &aid_src_rng_hgt() const { return _aid_src_rng_hgt; }
 
-	void getRngHgtInnov(float &rng_hgt_innov) const { rng_hgt_innov = _aid_src_rng_hgt.innovation; }
-	void getRngHgtInnovVar(float &rng_hgt_innov_var) const { rng_hgt_innov_var = _aid_src_rng_hgt.innovation_variance; }
-	void getRngHgtInnovRatio(float &rng_hgt_innov_ratio) const { rng_hgt_innov_ratio = _aid_src_rng_hgt.test_ratio; }
-
-	void getHaglRateInnov(float &hagl_rate_innov) const { hagl_rate_innov = _rng_consistency_check.getInnov(); }
-	void getHaglRateInnovVar(float &hagl_rate_innov_var) const { hagl_rate_innov_var = _rng_consistency_check.getInnovVar(); }
-	void getHaglRateInnovRatio(float &hagl_rate_innov_ratio) const { hagl_rate_innov_ratio = _rng_consistency_check.getSignedTestRatioLpf(); }
+	float getHaglRateInnov() const { return _rng_consistency_check.getInnov(); }
+	float getHaglRateInnovVar() const { return _rng_consistency_check.getInnovVar(); }
+	float getHaglRateInnovRatio() const { return _rng_consistency_check.getSignedTestRatioLpf(); }
 #endif // CONFIG_EKF2_RANGE_FINDER
 
 #if defined(CONFIG_EKF2_OPTICAL_FLOW)
 	const auto &aid_src_optical_flow() const { return _aid_src_optical_flow; }
-
-	void getFlowInnov(float flow_innov[2]) const
-	{
-		flow_innov[0] = _aid_src_optical_flow.innovation[0];
-		flow_innov[1] = _aid_src_optical_flow.innovation[1];
-	}
-
-	void getFlowInnovVar(float flow_innov_var[2]) const
-	{
-		flow_innov_var[0] = _aid_src_optical_flow.innovation_variance[0];
-		flow_innov_var[1] = _aid_src_optical_flow.innovation_variance[1];
-	}
-
-	void getFlowInnovRatio(float &flow_innov_ratio) const { flow_innov_ratio = math::max(_aid_src_optical_flow.test_ratio[0], _aid_src_optical_flow.test_ratio[1]); }
 
 	const Vector2f &getFlowVelBody() const { return _flow_vel_body; }
 	const Vector2f &getFlowVelNE() const { return _flow_vel_ne; }
@@ -182,137 +144,94 @@ public:
 	const Vector3f &getMeasuredBodyRate() const { return _measured_body_rate; }
 #endif // CONFIG_EKF2_OPTICAL_FLOW
 
-#if defined(CONFIG_EKF2_AUXVEL)
-	void getAuxVelInnov(float aux_vel_innov[2]) const;
-	void getAuxVelInnovVar(float aux_vel_innov[2]) const;
-	void getAuxVelInnovRatio(float &aux_vel_innov_ratio) const { aux_vel_innov_ratio = math::max(_aid_src_aux_vel.test_ratio[0], _aid_src_aux_vel.test_ratio[1]); }
-#endif // CONFIG_EKF2_AUXVEL
-
-	void getHeadingInnov(float &heading_innov) const
+	float getHeadingInnov() const
 	{
 #if defined(CONFIG_EKF2_MAGNETOMETER)
 		if (_control_status.flags.mag_hdg) {
-			heading_innov = _aid_src_mag_heading.innovation;
-			return;
+			return _aid_src_mag_heading.innovation;
+		}
 
-		} else if (_control_status.flags.mag_3D) {
-			heading_innov = Vector3f(_aid_src_mag.innovation).max();
-			return;
+		if (_control_status.flags.mag_3D) {
+			return Vector3f(_aid_src_mag.innovation).max();
 		}
 #endif // CONFIG_EKF2_MAGNETOMETER
 
 #if defined(CONFIG_EKF2_GNSS_YAW)
 		if (_control_status.flags.gps_yaw) {
-			heading_innov = _aid_src_gnss_yaw.innovation;
-			return;
+			return _aid_src_gnss_yaw.innovation;
 		}
 #endif // CONFIG_EKF2_GNSS_YAW
 
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 		if (_control_status.flags.ev_yaw) {
-			heading_innov = _aid_src_ev_yaw.innovation;
-			return;
+			return _aid_src_ev_yaw.innovation;
 		}
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+		return 0.f;
 	}
 
-	void getHeadingInnovVar(float &heading_innov_var) const
+	float getHeadingInnovVar() const
 	{
 #if defined(CONFIG_EKF2_MAGNETOMETER)
 		if (_control_status.flags.mag_hdg) {
-			heading_innov_var = _aid_src_mag_heading.innovation_variance;
-			return;
+			return _aid_src_mag_heading.innovation_variance;
+		}
 
-		} else if (_control_status.flags.mag_3D) {
-			heading_innov_var = Vector3f(_aid_src_mag.innovation_variance).max();
-			return;
+		if (_control_status.flags.mag_3D) {
+			return Vector3f(_aid_src_mag.innovation_variance).max();
 		}
 #endif // CONFIG_EKF2_MAGNETOMETER
 
 #if defined(CONFIG_EKF2_GNSS_YAW)
 		if (_control_status.flags.gps_yaw) {
-			heading_innov_var = _aid_src_gnss_yaw.innovation_variance;
-			return;
+			return _aid_src_gnss_yaw.innovation_variance;
 		}
 #endif // CONFIG_EKF2_GNSS_YAW
 
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 		if (_control_status.flags.ev_yaw) {
-			heading_innov_var = _aid_src_ev_yaw.innovation_variance;
-			return;
+			return _aid_src_ev_yaw.innovation_variance;
 		}
 #endif // CONFIG_EKF2_EXTERNAL_VISION
+
+		return 0.f;
 	}
 
-	void getHeadingInnovRatio(float &heading_innov_ratio) const
+	float getHeadingInnovRatio() const
 	{
 #if defined(CONFIG_EKF2_MAGNETOMETER)
 		if (_control_status.flags.mag_hdg) {
-			heading_innov_ratio = _aid_src_mag_heading.test_ratio;
-			return;
+			return _aid_src_mag_heading.test_ratio;
+		}
 
-		} else if (_control_status.flags.mag_3D) {
-			heading_innov_ratio = Vector3f(_aid_src_mag.test_ratio).max();
-			return;
+		if (_control_status.flags.mag_3D) {
+			return Vector3f(_aid_src_mag.test_ratio).max();
 		}
 #endif // CONFIG_EKF2_MAGNETOMETER
 
 #if defined(CONFIG_EKF2_GNSS_YAW)
 		if (_control_status.flags.gps_yaw) {
-			heading_innov_ratio = _aid_src_gnss_yaw.test_ratio;
-			return;
+			return _aid_src_gnss_yaw.test_ratio;
 		}
 #endif // CONFIG_EKF2_GNSS_YAW
 
 #if defined(CONFIG_EKF2_EXTERNAL_VISION)
 		if (_control_status.flags.ev_yaw) {
-			heading_innov_ratio = _aid_src_ev_yaw.test_ratio;
-			return;
+			return _aid_src_ev_yaw.test_ratio;
 		}
 #endif // CONFIG_EKF2_EXTERNAL_VISION
-	}
 
-#if defined(CONFIG_EKF2_MAGNETOMETER)
-	void getMagInnov(float mag_innov[3]) const { memcpy(mag_innov, _aid_src_mag.innovation, sizeof(_aid_src_mag.innovation)); }
-	void getMagInnovVar(float mag_innov_var[3]) const { memcpy(mag_innov_var, _aid_src_mag.innovation_variance, sizeof(_aid_src_mag.innovation_variance)); }
-	void getMagInnovRatio(float &mag_innov_ratio) const { mag_innov_ratio = Vector3f(_aid_src_mag.test_ratio).max(); }
-#endif // CONFIG_EKF2_MAGNETOMETER
+		return 0.f;
+	}
 
 #if defined(CONFIG_EKF2_DRAG_FUSION)
 	const auto &aid_src_drag() const { return _aid_src_drag; }
-
-	void getDragInnov(float drag_innov[2]) const
-	{
-		drag_innov[0] = _aid_src_drag.innovation[0];
-		drag_innov[1] = _aid_src_drag.innovation[1];
-	}
-	void getDragInnovVar(float drag_innov_var[2]) const
-	{
-		drag_innov_var[0] = _aid_src_drag.innovation_variance[0];
-		drag_innov_var[1] = _aid_src_drag.innovation_variance[1];
-	}
-	void getDragInnovRatio(float drag_innov_ratio[2]) const
-	{
-		drag_innov_ratio[0] = _aid_src_drag.test_ratio[0];
-		drag_innov_ratio[1] = _aid_src_drag.test_ratio[1];
-	}
 #endif // CONFIG_EKF2_DRAG_FUSION
 
-#if defined(CONFIG_EKF2_AIRSPEED)
-	void getAirspeedInnov(float &airspeed_innov) const { airspeed_innov = _aid_src_airspeed.innovation; }
-	void getAirspeedInnovVar(float &airspeed_innov_var) const { airspeed_innov_var = _aid_src_airspeed.innovation_variance; }
-	void getAirspeedInnovRatio(float &airspeed_innov_ratio) const { airspeed_innov_ratio = _aid_src_airspeed.test_ratio; }
-#endif // CONFIG_EKF2_AIRSPEED
-
-#if defined(CONFIG_EKF2_SIDESLIP)
-	void getBetaInnov(float &beta_innov) const { beta_innov = _aid_src_sideslip.innovation; }
-	void getBetaInnovVar(float &beta_innov_var) const { beta_innov_var = _aid_src_sideslip.innovation_variance; }
-	void getBetaInnovRatio(float &beta_innov_ratio) const { beta_innov_ratio = _aid_src_sideslip.test_ratio; }
-#endif // CONFIG_EKF2_SIDESLIP
-
-	void getGravityInnov(float grav_innov[3]) const { memcpy(grav_innov, _aid_src_gravity.innovation, sizeof(_aid_src_gravity.innovation)); }
-	void getGravityInnovVar(float grav_innov_var[3]) const { memcpy(grav_innov_var, _aid_src_gravity.innovation_variance, sizeof(_aid_src_gravity.innovation_variance)); }
-	void getGravityInnovRatio(float &grav_innov_ratio) const { grav_innov_ratio = Vector3f(_aid_src_gravity.test_ratio).max(); }
+#if defined(CONFIG_EKF2_GRAVITY_FUSION)
+	const auto &aid_src_gravity() const { return _aid_src_gravity; }
+#endif // CONFIG_EKF2_GRAVITY_FUSION
 
 	// get the state vector at the delayed time horizon
 	const matrix::Vector<float, State::size> &getStateAtFusionHorizonAsVector() const { return _state.vector(); }
@@ -331,6 +250,7 @@ public:
 
 	// get the full covariance matrix
 	const matrix::SquareMatrix<float, State::size> &covariances() const { return P; }
+	float stateCovariance(unsigned r, unsigned c) const { return P(r, c); }
 
 	// get the diagonal elements of the covariance matrix
 	matrix::Vector<float, State::size> covariances_diagonal() const { return P.diag(); }
@@ -403,10 +323,14 @@ public:
 #endif
 	}
 
+	// fuse single velocity and position measurement
+	bool fuseVelPosHeight(const float innov, const float innov_var, const int state_index);
+
 	// gyro bias
 	const Vector3f &getGyroBias() const { return _state.gyro_bias; } // get the gyroscope bias in rad/s
 	Vector3f getGyroBiasVariance() const { return getStateVariance<State::gyro_bias>(); } // get the gyroscope bias variance in rad/s
 	float getGyroBiasLimit() const { return _params.gyro_bias_lim; }
+	float getGyroNoise() const { return _params.gyro_noise; }
 
 	// accel bias
 	const Vector3f &getAccelBias() const { return _state.accel_bias; } // get the accelerometer bias in m/s**2
@@ -488,16 +412,7 @@ public:
 	Vector3f calcRotVecVariances() const;
 	float getYawVar() const;
 
-	// Returns true if the output of the yaw emergency estimator can be used for a reset
-	bool isYawEmergencyEstimateAvailable() const;
-
 	uint8_t getHeightSensorRef() const { return _height_sensor_ref; }
-
-#if defined(CONFIG_EKF2_EXTERNAL_VISION)
-	const BiasEstimator::status &getEvHgtBiasEstimatorStatus() const { return _ev_hgt_b_est.getStatus(); }
-
-	const BiasEstimator::status &getEvPosBiasEstimatorStatus(int i) const { return _ev_pos_b_est.getStatus(i); }
-#endif // CONFIG_EKF2_EXTERNAL_VISION
 
 #if defined(CONFIG_EKF2_AIRSPEED)
 	const auto &aid_src_airspeed() const { return _aid_src_airspeed; }
@@ -515,13 +430,12 @@ public:
 	const auto &aid_src_ev_pos() const { return _aid_src_ev_pos; }
 	const auto &aid_src_ev_vel() const { return _aid_src_ev_vel; }
 	const auto &aid_src_ev_yaw() const { return _aid_src_ev_yaw; }
+
+	const BiasEstimator::status &getEvHgtBiasEstimatorStatus() const { return _ev_hgt_b_est.getStatus(); }
+	const BiasEstimator::status &getEvPosBiasEstimatorStatus(int i) const { return _ev_pos_b_est.getStatus(i); }
 #endif // CONFIG_EKF2_EXTERNAL_VISION
 
 #if defined(CONFIG_EKF2_GNSS)
-	void getGpsVelPosInnov(float hvel[2], float &vvel, float hpos[2], float &vpos) const;
-	void getGpsVelPosInnovVar(float hvel[2], float &vvel, float hpos[2], float &vpos) const;
-	void getGpsVelPosInnovRatio(float &hvel, float &vvel, float &hpos, float &vpos) const;
-
 	// ask estimator for sensor data collection decision and do any preprocessing if required, returns true if not defined
 	bool collect_gps(const gpsMessage &gps) override;
 
@@ -533,11 +447,6 @@ public:
 
 	bool gps_checks_passed() const { return _gps_checks_passed; };
 
-	// get solution data from the EKF-GSF emergency yaw estimator
-	// returns false when data is not available
-	bool getDataEKFGSF(float *yaw_composite, float *yaw_variance, float yaw[N_MODELS_EKFGSF],
-			   float innov_VN[N_MODELS_EKFGSF], float innov_VE[N_MODELS_EKFGSF], float weight[N_MODELS_EKFGSF]);
-
 	const BiasEstimator::status &getGpsHgtBiasEstimatorStatus() const { return _gps_hgt_b_est.getStatus(); }
 
 	const auto &aid_src_gnss_hgt() const { return _aid_src_gnss_hgt; }
@@ -547,6 +456,15 @@ public:
 # if defined(CONFIG_EKF2_GNSS_YAW)
 	const auto &aid_src_gnss_yaw() const { return _aid_src_gnss_yaw; }
 # endif // CONFIG_EKF2_GNSS_YAW
+
+	// Returns true if the output of the yaw emergency estimator can be used for a reset
+	bool isYawEmergencyEstimateAvailable() const;
+
+	// get solution data from the EKF-GSF emergency yaw estimator
+	// returns false when data is not available
+	bool getDataEKFGSF(float *yaw_composite, float *yaw_variance, float yaw[N_MODELS_EKFGSF],
+			   float innov_VN[N_MODELS_EKFGSF], float innov_VE[N_MODELS_EKFGSF], float weight[N_MODELS_EKFGSF]);
+
 #endif // CONFIG_EKF2_GNSS
 
 #if defined(CONFIG_EKF2_MAGNETOMETER)
@@ -554,11 +472,40 @@ public:
 	const auto &aid_src_mag() const { return _aid_src_mag; }
 #endif // CONFIG_EKF2_MAGNETOMETER
 
-	const auto &aid_src_gravity() const { return _aid_src_gravity; }
-
 #if defined(CONFIG_EKF2_AUXVEL)
 	const auto &aid_src_aux_vel() const { return _aid_src_aux_vel; }
 #endif // CONFIG_EKF2_AUXVEL
+
+
+	bool measurementUpdate(VectorState &K, float innovation_variance, float innovation)
+	{
+		clearInhibitedStateKalmanGains(K);
+
+		const VectorState KS = K * innovation_variance;
+		SquareMatrixState KHP;
+
+		for (unsigned row = 0; row < State::size; row++) {
+			for (unsigned col = 0; col < State::size; col++) {
+				// Instad of literally computing KHP, use an equvalent
+				// equation involving less mathematical operations
+				KHP(row, col) = KS(row) * K(col);
+			}
+		}
+
+		const bool is_healthy = checkAndFixCovarianceUpdate(KHP);
+
+		if (is_healthy) {
+			// apply the covariance corrections
+			P -= KHP;
+
+			fixCovarianceErrors(true);
+
+			// apply the state corrections
+			fuse(K, innovation);
+		}
+
+		return is_healthy;
+	}
 
 private:
 
@@ -608,7 +555,6 @@ private:
 	uint64_t _time_last_hor_vel_fuse{0};	///< time the last fusion of horizontal velocity measurements was performed (uSec)
 	uint64_t _time_last_ver_vel_fuse{0};	///< time the last fusion of verticalvelocity measurements was performed (uSec)
 	uint64_t _time_last_heading_fuse{0};
-	uint64_t _time_last_zero_velocity_fuse{0}; ///< last time of zero velocity update (uSec)
 
 	Vector3f _last_known_pos{};		///< last known local position vector (m)
 
@@ -617,10 +563,6 @@ private:
 	Vector3f _earth_rate_NED{};	///< earth rotation vector (NED) in rad/s
 
 	Dcmf _R_to_earth{};	///< transformation matrix from body frame to earth frame from last EKF prediction
-
-	// zero gyro update
-	Vector3f _zgup_delta_ang{};
-	float _zgup_delta_ang_dt{0.f};
 
 	Vector2f _accel_lpf_NE{};			///< Low pass filtered horizontal earth frame acceleration (m/sec**2)
 	float _height_rate_lpf{0.0f};
@@ -731,7 +673,9 @@ private:
 # endif // CONFIG_EKF2_GNSS_YAW
 #endif // CONFIG_EKF2_GNSS
 
+#if defined(CONFIG_EKF2_GRAVITY_FUSION)
 	estimator_aid_source3d_s _aid_src_gravity{};
+#endif // CONFIG_EKF2_GRAVITY_FUSION
 
 #if defined(CONFIG_EKF2_AUXVEL)
 	estimator_aid_source2d_s _aid_src_aux_vel{};
@@ -865,9 +809,6 @@ private:
 	// fuse body frame drag specific forces for multi-rotor wind estimation
 	void fuseDrag(const dragSample &drag_sample);
 #endif // CONFIG_EKF2_DRAG_FUSION
-
-	// fuse single velocity and position measurement
-	bool fuseVelPosHeight(const float innov, const float innov_var, const int state_index);
 
 	void resetVelocityTo(const Vector3f &vel, const Vector3f &new_vel_var);
 
@@ -1006,36 +947,6 @@ private:
 #endif // CONFIG_EKF2_WIND
 	}
 
-	bool measurementUpdate(VectorState &K, float innovation_variance, float innovation)
-	{
-		clearInhibitedStateKalmanGains(K);
-
-		const VectorState KS = K * innovation_variance;
-		SquareMatrixState KHP;
-
-		for (unsigned row = 0; row < State::size; row++) {
-			for (unsigned col = 0; col < State::size; col++) {
-				// Instad of literally computing KHP, use an equvalent
-				// equation involving less mathematical operations
-				KHP(row, col) = KS(row) * K(col);
-			}
-		}
-
-		const bool is_healthy = checkAndFixCovarianceUpdate(KHP);
-
-		if (is_healthy) {
-			// apply the covariance corrections
-			P -= KHP;
-
-			fixCovarianceErrors(true);
-
-			// apply the state corrections
-			fuse(K, innovation);
-		}
-
-		return is_healthy;
-	}
-
 	// if the covariance correction will result in a negative variance, then
 	// the covariance matrix is unhealthy and must be corrected
 	bool checkAndFixCovarianceUpdate(const SquareMatrixState &KHP);
@@ -1086,18 +997,12 @@ private:
 	void stopGpsFusion();
 
 	bool shouldResetGpsFusion() const;
-	bool isYawFailure() const;
 
 	// return true id the GPS quality is good enough to set an origin and start aiding
 	bool gps_is_good(const gpsMessage &gps);
 
 	void controlGnssHeightFusion(const gpsSample &gps_sample);
 	void stopGpsHgtFusion();
-
-	// Resets the main Nav EKf yaw to the estimator from the EKF-GSF yaw estimator
-	// Resets the horizontal velocity and position to the default navigation sensor
-	// Returns true if the reset was successful
-	bool resetYawToEKFGSF();
 
 	void resetGpsDriftCheckFilters();
 
@@ -1115,6 +1020,17 @@ private:
 	void updateGpsYaw(const gpsSample &gps_sample);
 
 # endif // CONFIG_EKF2_GNSS_YAW
+
+	// Declarations used to control use of the EKF-GSF yaw estimator
+	bool isYawFailure() const;
+
+	// Resets the main Nav EKf yaw to the estimator from the EKF-GSF yaw estimator
+	// Returns true if the reset was successful
+	bool resetYawToEKFGSF();
+
+	// yaw estimator instance
+	EKFGSF_yaw _yawEstimator{};
+
 #endif // CONFIG_EKF2_GNSS
 
 #if defined(CONFIG_EKF2_MAGNETOMETER)
@@ -1157,10 +1073,6 @@ private:
 	void resetHeightToLastKnown();
 	void stopFakeHgtFusion();
 
-	void controlZeroVelocityUpdate();
-	void controlZeroGyroUpdate(const imuSample &imu_delayed);
-	void fuseDeltaAngBias(float innov, float innov_var, int obs_index);
-
 	void controlZeroInnovationHeadingUpdate();
 
 #if defined(CONFIG_EKF2_AUXVEL)
@@ -1184,8 +1096,10 @@ private:
 	void updateGroundEffect();
 #endif // CONFIG_EKF2_BAROMETER
 
+#if defined(CONFIG_EKF2_GRAVITY_FUSION)
 	// gravity fusion: heuristically enable / disable gravity fusion
 	void controlGravityFusion(const imuSample &imu_delayed);
+#endif // CONFIG_EKF2_GRAVITY_FUSION
 
 	void resetQuatCov(const float yaw_noise = NAN);
 	void resetQuatCov(const Vector3f &euler_noise_ned);
@@ -1230,11 +1144,6 @@ private:
 	// yaw : Euler yaw angle (rad)
 	// yaw_variance : yaw error variance (rad^2)
 	void resetQuatStateYaw(float yaw, float yaw_variance);
-
-	// Declarations used to control use of the EKF-GSF yaw estimator
-
-	// yaw estimator instance
-	EKFGSF_yaw _yawEstimator{};
 
 	uint8_t _height_sensor_ref{HeightSensor::UNKNOWN};
 	uint8_t _position_sensor_ref{static_cast<uint8_t>(PositionSensor::GNSS)};
@@ -1329,6 +1238,9 @@ private:
 		// if any of the innovations are rejected, then the overall innovation is rejected
 		status.innovation_rejected = innovation_rejected;
 	}
+
+	ZeroGyroUpdate _zero_gyro_update{};
+	ZeroVelocityUpdate _zero_velocity_update{};
 };
 
 #endif // !EKF_EKF_H
