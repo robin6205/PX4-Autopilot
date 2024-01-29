@@ -198,7 +198,7 @@
 
 
     <include>
-      <uri>home/wsribunm/Documents/GitHub/PX4-Autopilot/Tools/simulation/gz/models/maze_sample</uri>
+      <uri>models://maze_sample</uri>
       <name>maze_sample</name>
       <pose>0 0 1.6 0 0 0</pose>
     </include>
