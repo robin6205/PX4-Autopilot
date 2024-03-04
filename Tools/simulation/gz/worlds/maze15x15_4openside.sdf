@@ -1,6 +1,6 @@
 <?xml version="1.0" ?>
 <sdf version="1.6">
-  <world name="maze_sample">
+  <world name="maze15x15_4openside">
     <plugin
       filename="gz-sim-user-commands-system"
       name="gz::sim::systems::UserCommands">
@@ -200,7 +200,7 @@
     <include>
       <uri>models://maze15x15_4openside</uri>
       <name>maze15x15_4openside</name>
-      <pose>0 0 1.6 0 0 0</pose>
+      <pose>0 0 0 0 0 0</pose>
     </include>
 
 
